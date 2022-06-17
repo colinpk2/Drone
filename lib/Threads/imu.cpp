@@ -21,7 +21,7 @@ void IMU::INIT() {
     #ifdef debug
     Serial.println("MPU6050 Found");
     #endif
-
+    Serial.println("Init IMU Setup");
     mpu_->setAccelerometerRange(MPU6050_RANGE_8_G);
 
     mpu_->setGyroRange(MPU6050_RANGE_500_DEG);

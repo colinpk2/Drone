@@ -3,10 +3,18 @@
 #include "gps.h"
 #include "imu.h"
 #include <ChRt.h>
+#include <vector>
+#include <QMC5883LCompass.h>
 
+using std::vector;
+
+#define debug
+vector<float> home = {0, 0, 0};
+bool cal = true;
+int iter = 4;
 // Hardware serial port
 #define GPSSerial Serial1
-uint32_t timer = millis();
+uint32_t timer_ = millis();
 // Connect to the GPS on the hardware port
 Adafruit_GPS gps(&GPSSerial);
 Adafruit_MPU6050 mpu;
@@ -14,50 +22,172 @@ data data_struct;
 GPS gps_(&gps, &data_struct);
 IMU imu_(&mpu, &data_struct);
 
-static THD_WORKING_AREA(GPS_WA, 1024);
-// static THD_WORKING_AREA(IMU_WA, 8192);
-
-static THD_FUNCTION(GPS_THD, arg) {
-    
-    while(true) {
-        // gps_.GPS_tick();
-        Serial.println("GPS Thread");
-
-        chThdSleepMilliseconds(10);
-    }
-}
-
-// static THD_FUNCTION(IMU_THD, arg) {
-    
-//     while(true) {
-//         imu_.imu_tick();
-
-//         chThdSleepMilliseconds(10);
-//     }
-// }
-
-void chSetup() {
-    chThdCreateStatic(GPS_WA, sizeof(GPS_WA), NORMALPRIO,
-                      GPS_THD, NULL);
-    while (true);
-}
-
 void setup()
 {
   Serial.begin(115200);
   delay(100);
-  Serial.println("Initialize");
   imu_.INIT();
   gps_.INIT();
-  Serial.println("Starting ChibiOS");
-  // chBegin(chSetup);
+  while (gps.lat == 0) {
+    Serial.println("getting GPS");
+    gps.read();
+    if (gps.newNMEAreceived()) {
+      gps.lastNMEA(); // this also sets the newNMEAreceived() flag to false
+      if (!gps.parse(gps.lastNMEA())){} // this also sets the newNMEAreceived() flag to false
+    }
+    Serial.println(gps.fix);
+    data_struct.gps_fix = gps.fix;
+  }
 }
 
 void loop()
 {
-  imu_.imu_tick();
-  // gps_.GPS_tick();
-  // Serial.println("Alt: ");
-  // Serial.println(data_struct.gps_alt);
-  // Serial.println(data_struct.a_z);
+  if (cal) {
+    Serial.println("calibrating");
+    delay(3000);
+    for (int i=0; i < iter; i++) {
+      if (gps.newNMEAreceived()) {
+        gps.lastNMEA(); // this also sets the newNMEAreceived() flag to false
+        if (!gps.parse(gps.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+          return;
+      }
+
+      home[0] += gps.latitude;
+      home[1] += gps.longitude;
+      home[2] += gps.altitude;
+      Serial.println(gps.latitude, 6);
+      delay(2500);
+    }
+    cal = false;
+    for (int i=0; i < 3; i++) {
+      home[i] /= iter;
+    }
+    for (int i = 0; i < 2; i++) {
+      float deg = (trunc(home[i]/100));
+      float min = (home[i] - (deg*100));
+      home[i] = (deg + (min/60));
+    }
+  }
+  char c = gps.read();
+  if (gps.newNMEAreceived()) {
+    gps.lastNMEA(); // this also sets the newNMEAreceived() flag to false
+    if (!gps.parse(gps.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+      return;
+  }
+
+  if (millis() - timer_ > 100) {
+    timer_ = millis(); // reset the timer
+
+    #ifdef debug
+    // Serial.print("Fix: "); Serial.print((int)gps.fix);
+    // Serial.print(" quality: "); Serial.println((int)gps.fixquality);
+    #endif
+    data_struct.gps_fix = gps.fix;
+    data_struct.gps_x = gps.latitude;
+    data_struct.gps_y = gps.longitude;
+    data_struct.gps_alt = gps.altitude;
+    // Serial.println(data_struct.gps_x, 5);
+    // Serial.println(data_struct.gps_y, 5);
+  }
+  sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    
+    data_struct.a_x = a.acceleration.x;
+    data_struct.a_y = a.acceleration.y;
+    data_struct.a_z = a.acceleration.z;
+
+    data_struct.g_x = g.gyro.x;
+    data_struct.g_y = g.gyro.y;
+    data_struct.g_z = g.gyro.z;
+
+
+    float deg_lat = (trunc(gps.latitude/100));
+    float min_lat = (gps.latitude - (deg_lat*100));
+    float lat = (deg_lat + (min_lat/60));
+
+    float deg_lon = (trunc(gps.longitude/100));
+    float min_lon = (gps.longitude - (deg_lon*100));
+    float lon = (deg_lon + (min_lon/60));
+
+    // Serial.print("X: "); Serial.println((lon - home[1])*111139, 6);
+    // Serial.print("Y: "); Serial.println((lat - home[0])*111139, 6);
+    Serial.println(gps.angle);
 }
+
+// #include <Wire.h>
+// #include <Adafruit_Sensor.h>
+// #include <Adafruit_HMC5883_U.h>
+
+// /* Assign a unique ID to this sensor at the same time */
+// Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
+
+// void displaySensorDetails(void)
+// {
+//   sensor_t sensor;
+//   mag.getSensor(&sensor);
+//   Serial.println("------------------------------------");
+//   Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+//   Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+//   Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+//   Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" uT");
+//   Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" uT");
+//   Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" uT");  
+//   Serial.println("------------------------------------");
+//   Serial.println("");
+//   delay(500);
+// }
+
+// void setup(void) 
+// {
+//   Serial.begin(9600);
+//   Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
+  
+//   /* Initialise the sensor */
+//   if(!mag.begin())
+//   {
+//     /* There was a problem detecting the HMC5883 ... check your connections */
+//     Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
+//     while(1);
+//   }
+  
+//   /* Display some basic information on this sensor */
+//   displaySensorDetails();
+// }
+
+// void loop(void) 
+// {
+//   /* Get a new sensor event */ 
+//   sensors_event_t event; 
+//   mag.getEvent(&event);
+ 
+//   /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
+//   // Serial.print("X: "); Serial.print(event.magnetic.x); Serial.print("  ");
+//   // Serial.print("Y: "); Serial.print(event.magnetic.y); Serial.print("  ");
+//   // Serial.print("Z: "); Serial.print(event.magnetic.z); Serial.print("  ");Serial.println("uT");
+
+//   // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
+//   // Calculate heading when the magnetometer is level, then correct for signs of axis.
+//   float heading = atan2(event.magnetic.y, event.magnetic.x);
+  
+//   // Once you have your heading, you must then add your 'Declination Angle', which is the 'Error' of the magnetic field in your location.
+//   // Find yours here: http://www.magnetic-declination.com/
+//   // Mine is: -13* 2' W, which is ~13 Degrees, or (which we need) 0.22 radians
+//   // If you cannot find your Declination, comment out these two lines, your compass will be slightly off.
+//   // float declinationAngle = 0.22;
+//   // heading += declinationAngle;
+  
+//   // Correct for when signs are reversed.
+//   if(heading < 0)
+//     heading += 2*PI;
+    
+//   // Check for wrap due to addition of declination.
+//   if(heading > 2*PI)
+//     heading -= 2*PI;
+   
+//   // Convert radians to degrees for readability.
+//   float headingDegrees = heading * 180/M_PI; 
+  
+//   Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
+  
+//   delay(100);
+// }
