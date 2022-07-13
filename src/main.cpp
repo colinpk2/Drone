@@ -10,10 +10,13 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
+#include <PWMServo.h>
 
 using std::vector;
 
 #define debug
+#define GPS_run
+
 vector<float> home = {0, 0, 0};
 bool cal = true;
 int iter = 4;
@@ -30,13 +33,57 @@ GPS gps_(&gps, &data_struct);
 IMU imu_(&mpu, &data_struct);
 MAG mag_(&mag);
 
+PWMServo FR;
+PWMServo FL;
+PWMServo BR;
+PWMServo BL;
+PWMServo servo;
+
 void setup()
 {
+  int min = 1000;
+  int max = 2000;
+
+  FR.attach(2, min, max);
+  FL.attach(4, min, max);
+
+  BR.attach(6, min, max);
+  BL.attach(9, min, max);
+
+  servo.attach(29, 900, 2000);
+
   Serial.begin(115200);
   delay(100);
   imu_.INIT();
   gps_.INIT();
   mag_.INIT();
+
+  // Serial.println(0);te(0);
+  BR.write(0);
+  delay(100);
+  float i = 180;
+  FL.write(i);
+  FR.write(i);
+  BL.write(i);
+  BR.write(i);
+  
+  delay(5000);
+
+  i = 0;
+  FL.write(i);
+  FR.write(i);
+  BL.write(i);
+  BR.write(i);
+
+  delay(10000);
+
+  i = 150;
+  FL.write(i);
+  FR.write(i);
+  BL.write(i);
+  BR.write(i);
+
+  #ifdef GPS_run
   while (gps.lat == 0) {
     Serial.println("getting GPS");
     gps.read();
@@ -47,10 +94,12 @@ void setup()
     Serial.println(gps.fix);
     data_struct.gps_fix = gps.fix;
   }
+  #endif
 }
 
 void loop()
 {
+  #ifdef GPS_run
   if (cal) {
     Serial.println("calibrating");
     delay(3000);
@@ -77,6 +126,16 @@ void loop()
       home[i] = (deg + (min/60));
     }
   }
+  #endif
+
+  if (millis() - timer_ < 5000 || millis() - timer_ > 15000){
+    FR.write(0);
+  } else {
+    FR.write(90);
+
+  }
+
+
   char c = gps.read();
   if (gps.newNMEAreceived()) {
     gps.lastNMEA(); // this also sets the newNMEAreceived() flag to false
@@ -101,9 +160,9 @@ void loop()
   sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
     
-    data_struct.a_x = a.acceleration.x;
-    data_struct.a_y = a.acceleration.y;
-    data_struct.a_z = a.acceleration.z;
+    data_struct.a_x = a.acceleration.x - .47;
+    data_struct.a_y = a.acceleration.y + .2;
+    data_struct.a_z = a.acceleration.z + .54;
 
     data_struct.g_x = g.gyro.x;
     data_struct.g_y = g.gyro.y;
@@ -119,9 +178,10 @@ void loop()
     float lon = (deg_lon + (min_lon/60));
 
     Serial.print("X: "); Serial.println((lon - home[1])*111139, 6);
-    // Serial.print("Y: "); Serial.println((lat - home[0])*111139, 6);
+    Serial.print("Y: "); Serial.println((lat - home[0])*111139, 6);
     // Serial.println(gps.angle);
     /* Get a new sensor event */ 
+  // Serial.println(data_struct.g_x);
   sensors_event_t event; 
   mag.getEvent(&event);
  
@@ -140,6 +200,10 @@ void loop()
   if(heading > 2*PI)
     heading -= 2*PI;
   // Convert radians to degrees for readability.
-  float headingDegrees = heading * 180/M_PI; 
+  float headingDegrees = heading * 180/M_PI - 110; 
   // Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
+  // Serial.println(data_struct.a_x);
+  // Serial.println(data_struct.a_y);
+  // Serial.println(data_struct.a_z);
+  delay(300);
 }

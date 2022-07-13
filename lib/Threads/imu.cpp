@@ -5,7 +5,6 @@ IMU::IMU(Adafruit_MPU6050 * mpu, data * data_struct) {
 }
 
 void IMU::INIT() {
-    while (!Serial) 
     delay(10); // will pause Zero, Leonardo, etc until serial console opens
     #ifdef debug
     Serial.println("MPU6050 Setup");
@@ -36,7 +35,7 @@ void IMU::imu_tick() {
   /* Get new sensor events with the readings */
   sensors_event_t a, g, temp;
   mpu_->getEvent(&a, &g, &temp);
-    Serial.println(a.acceleration.x - 0.45);
+    Serial.println(a.acceleration.x - 0.65);
     // data_->a_x = a.acceleration.x;
     // data_->a_y = a.acceleration.y;
     // data_->a_z = a.acceleration.z;
