@@ -67,7 +67,7 @@ void GPS::INIT() {
     // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
     // the parser doesn't care about other sentences at this time
     // Set the update rate
-    GPS_->sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
+    GPS_->sendCommand(PMTK_SET_NMEA_UPDATE_10HZ); // 1 Hz update rate
     // For the parsing code to work nicely and have time to sort thru the data, and
     // print it out we don't suggest using anything higher than 1 Hz
 
